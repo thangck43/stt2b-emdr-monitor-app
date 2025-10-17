@@ -4,3 +4,4 @@ plotly
 gunicorn
 requests
 openpyxl
+xlsxwriter
