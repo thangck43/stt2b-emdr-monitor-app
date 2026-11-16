@@ -46,6 +46,16 @@ CREATE TABLE IF NOT EXISTS alerts (
     ack_at      TEXT DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_alerts_ts ON alerts(ts);
+CREATE TABLE IF NOT EXISTS watchlist (
+    pattern       TEXT PRIMARY KEY,   -- username chính xác hoặc wildcard: "*@nhathau.com", "tmp_*"
+    reason        TEXT DEFAULT '',    -- lý do theo dõi (chỉ admin thấy)
+    warn_message  TEXT DEFAULT '',    -- nội dung cảnh báo hiển thị cho user; rỗng = dùng mặc định
+    notify_email  TEXT DEFAULT '',    -- email nhận cảnh báo; rỗng = dùng username nếu là email
+    severity      TEXT NOT NULL DEFAULT 'high',
+    enabled       INTEGER NOT NULL DEFAULT 1,
+    created_at    TEXT,
+    updated_at    TEXT
+);
 """
 
 

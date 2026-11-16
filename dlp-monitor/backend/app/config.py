@@ -30,6 +30,21 @@ class Settings:
         # Login ngoài giờ làm việc (giờ local server) => cảnh báo
         self.work_hour_start = int(os.getenv("DLP_WORK_HOUR_START", "7"))
         self.work_hour_end = int(os.getenv("DLP_WORK_HOUR_END", "19"))
+        # Cảnh báo hiển thị cho user nằm trong watchlist khi đăng nhập portal
+        self.default_warning = os.getenv(
+            "DLP_DEFAULT_WARNING",
+            "Tài khoản của bạn nằm trong danh sách giám sát đặc biệt. Mọi thao tác trên portal "
+            "đang được ghi nhận. Không tải xuống, sao chép hay chia sẻ dữ liệu khi chưa được phép.",
+        )
+        # Không lặp lại cảnh báo admin cho cùng user trong khoảng này (phút)
+        self.watchlist_alert_dedupe_minutes = int(os.getenv("DLP_WATCHLIST_DEDUPE_MINUTES", "30"))
+        # SMTP để gửi email cảnh báo cho user (tùy chọn)
+        self.smtp_host = os.getenv("DLP_SMTP_HOST", "")
+        self.smtp_port = int(os.getenv("DLP_SMTP_PORT", "587"))
+        self.smtp_user = os.getenv("DLP_SMTP_USER", "")
+        self.smtp_password = os.getenv("DLP_SMTP_PASSWORD", "")
+        self.smtp_from = os.getenv("DLP_SMTP_FROM", "")
+        self.smtp_starttls = _bool("DLP_SMTP_STARTTLS", True)
 
 
 settings = Settings()

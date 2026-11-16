@@ -97,10 +97,11 @@ async function flushQueue() {
   await chrome.storage.local.set({ pending: left });
 }
 
-async function sendEvent(type, url, detail = "") {
+async function sendEvent(type, url, detail = "", portalUsername = "") {
   const cfg = await getConfig();
-  const evt = { username: await getIdentity(cfg), type, url, detail, device: navigator.userAgent.slice(0, 200) };
-  try { await api(cfg, "/api/agent/event", evt); } catch (e) { await queueEvent(evt); }
+  const evt = { username: await getIdentity(cfg), type, url, detail, portal_username: portalUsername,
+    device: navigator.userAgent.slice(0, 200) };
+  try { return await api(cfg, "/api/agent/event", evt); } catch (e) { await queueEvent(evt); return null; }
 }
 
 function notifyUser(title, message) {
@@ -168,15 +169,21 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         blockSaveAndPrint: cfg.blockSaveAndPrint && !(policy && policy.download_allowed) });
     }
     if (!portal) return sendResponse({ ok: false });
+    let res = null;
     if (msg.type === "portalLogin" && msg.username) {
-      await chrome.storage.local.set({ lastPortalUser: String(msg.username).slice(0, 200) });
-      await sendEvent("login", pageUrl, "portal_username=" + String(msg.username).slice(0, 200));
-    } else if (["login_failed", "logout", "visit"].includes(msg.type)) {
-      await sendEvent(msg.type, pageUrl, msg.detail || "");
+      const pu = String(msg.username).slice(0, 200);
+      await chrome.storage.local.set({ lastPortalUser: pu });
+      res = await sendEvent("login", pageUrl, "", pu);
+    } else if (["login_failed", "logout", "visit", "warning_ack"].includes(msg.type)) {
+      const { lastPortalUser = "" } = await chrome.storage.local.get("lastPortalUser");
+      res = await sendEvent(msg.type, pageUrl, msg.detail || "", lastPortalUser);
     } else if (msg.type === "blockedShortcut") {
-      await sendEvent("visit", pageUrl, "Bị chặn phím tắt " + msg.detail);
+      res = await sendEvent("visit", pageUrl, "Bị chặn phím tắt " + msg.detail);
     }
-    sendResponse({ ok: true });
+    // User nằm trong danh sách theo dõi -> server trả warning: báo cho user bằng thông báo hệ thống
+    const warning = res && res.warning;
+    if (warning && msg.type === "portalLogin") notifyUser(warning.title || "Cảnh báo bảo mật", warning.message);
+    sendResponse({ ok: true, warning });
   })();
   return true;
 });

@@ -43,6 +43,7 @@ button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
   <button data-tab="alerts">Cảnh báo</button>
   <button data-tab="events">Nhật ký</button>
   <button data-tab="users">User &amp; quyền download</button>
+  <button data-tab="watch">Danh sách theo dõi</button>
 </nav>
 <main>
   <section id="overview">
@@ -60,7 +61,7 @@ button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
     <div class="row">
       <input id="evUser" placeholder="Lọc username">
       <select id="evType"><option value="">Tất cả loại</option><option>login</option><option>login_failed</option>
-        <option>logout</option><option>visit</option><option>download_allowed</option><option>download_blocked</option><option>agent_tamper</option></select>
+        <option>logout</option><option>visit</option><option>watchlist_hit</option><option>warning_ack</option><option>warning_email</option><option>download_allowed</option><option>download_blocked</option><option>agent_tamper</option></select>
       <button class="act" id="evGo">Lọc</button>
     </div>
     <div class="wrap"><table id="evTbl"></table></div>
@@ -84,6 +85,22 @@ button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
     </div>
     <div class="wrap" style="margin-top:12px"><table id="userTbl"></table></div>
   </section>
+  <section id="watch" class="hidden">
+    <div class="card">
+      <b>Thêm user vào danh sách theo dõi</b>
+      <p class="muted" style="margin:4px 0 8px">Khi user trong danh sách đăng nhập / truy cập portal: ghi log, cảnh báo admin và hiện cảnh báo cho chính user đó.
+        Mỗi dòng (hoặc dấu phẩy) là một username. Hỗ trợ wildcard: <code>*@nhathau.com</code>, <code>tmp_*</code>.</p>
+      <textarea id="wNames" rows="4" style="width:100%;box-sizing:border-box;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:6px" placeholder="nguyen.van.a&#10;tran.thi.b@congty.com&#10;*@nhathau.com"></textarea>
+      <div class="row">
+        <input id="wReason" placeholder="Lý do theo dõi (chỉ admin thấy)" size="30">
+        <select id="wSev"><option value="high">Mức HIGH</option><option value="medium">Mức MEDIUM</option><option value="low">Mức LOW</option></select>
+        <label><input type="checkbox" id="wReplace"> Thay toàn bộ danh sách cũ</label>
+      </div>
+      <input id="wMsg" style="width:100%;box-sizing:border-box" placeholder="Nội dung cảnh báo hiển thị cho user (bỏ trống = dùng thông điệp mặc định)">
+      <div class="row"><button class="act primary" id="wSave">Thêm vào danh sách</button></div>
+    </div>
+    <div class="wrap" style="margin-top:12px"><table id="watchTbl"></table></div>
+  </section>
 </main>
 <script>
 const $ = s => document.querySelector(s);
@@ -98,7 +115,7 @@ async function api(path, opts = {}) {
   return r.json();
 }
 const typePill = t => {
-  const cls = {download_blocked:'bad', agent_tamper:'bad', login_failed:'warn', download_allowed:'ok', login:'ok'}[t] || '';
+  const cls = {download_blocked:'bad', agent_tamper:'bad', watchlist_hit:'bad', login_failed:'warn', warning_ack:'warn', download_allowed:'ok', login:'ok'}[t] || '';
   return `<span class="pill ${cls}">${esc(t)}</span>`;
 };
 const sevPill = s => `<span class="pill ${{high:'bad',medium:'warn',low:'ok'}[s]||''}">${esc(s)}</span>`;
@@ -115,7 +132,7 @@ document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
 async function loadOverview() {
   const s = await api('/api/admin/stats'); const c = s.last_24h;
   const k = [['Cảnh báo mở', s.open_alerts], ['Đăng nhập 24h', c.login||0], ['Download cho phép', c.download_allowed||0],
-             ['Download bị chặn', c.download_blocked||0], ['User hoạt động', s.active_users.length]];
+             ['Download bị chặn', c.download_blocked||0], ['User theo dõi truy cập', c.watchlist_hit||0], ['User hoạt động', s.active_users.length]];
   $('#kpis').innerHTML = k.map(([l,v]) => `<div class="card kpi"><b>${v}</b><span>${l}</span></div>`).join('');
   table($('#active'), ['User','Lần cuối'], s.active_users.map(u => `<tr><td>${esc(u.username)}</td><td>${fmt(u.last_seen)}</td></tr>`));
   table($('#topblocked'), ['User','Số lần chặn'], s.top_blocked.map(u => `<tr><td>${esc(u.username)}</td><td>${u.n}</td></tr>`));
@@ -143,8 +160,26 @@ async function loadUsers() {
     <td>${fmt(x.allow_until) || '–'}</td><td class="muted">${esc(x.note)}</td>
     <td><button class="act" data-edit='${esc(JSON.stringify(x))}'>Sửa</button></td></tr>`));
 }
+async function loadWatch() {
+  const w = await api('/api/admin/watchlist');
+  table($('#watchTbl'), ['Username / pattern','Lý do','Cảnh báo cho user','Mức','Trạng thái','Lượt 30 ngày','Lần cuối',''], w.map(x => `<tr>
+    <td><b>${esc(x.pattern)}</b></td><td>${esc(x.reason)}</td><td>${esc(x.warn_message) || '<span class="muted">mặc định</span>'}</td>
+    <td>${sevPill(x.severity)}</td>
+    <td><button class="act" data-wtoggle="${esc(x.pattern)}" data-v="${x.enabled}">${x.enabled ? '👁 Đang theo dõi' : '⏸ Tạm dừng'}</button></td>
+    <td>${x.hits_30d}</td><td>${fmt(x.last_hit) || '–'}</td>
+    <td><button class="act" data-wdel="${esc(x.pattern)}">Xóa</button></td></tr>`));
+}
+$('#wSave').onclick = async () => {
+  if (!$('#wNames').value.trim()) return;
+  if ($('#wReplace').checked && !confirm('Xóa toàn bộ danh sách cũ và thay bằng danh sách này?')) return;
+  const r = await api('/api/admin/watchlist/bulk', {method:'POST', body: JSON.stringify({usernames: $('#wNames').value,
+    reason: $('#wReason').value, warn_message: $('#wMsg').value, severity: $('#wSev').value, replace: $('#wReplace').checked})});
+  $('#status').textContent = `Đã thêm ${r.count} mục`; $('#wNames').value = ''; loadWatch();
+};
 document.addEventListener('click', async ev => {
   const t = ev.target;
+  if (t.dataset.wtoggle) { await api('/api/admin/watchlist/' + encodeURIComponent(t.dataset.wtoggle), {method:'PUT', body: JSON.stringify({enabled: t.dataset.v !== '1'})}); refresh(); }
+  if (t.dataset.wdel && confirm('Xóa ' + t.dataset.wdel + ' khỏi danh sách theo dõi?')) { await api('/api/admin/watchlist/' + encodeURIComponent(t.dataset.wdel), {method:'DELETE'}); refresh(); }
   if (t.dataset.ack) { await api(`/api/admin/alerts/${t.dataset.ack}/ack`, {method:'POST', body: JSON.stringify({by:'admin'})}); refresh(); }
   if (t.dataset.toggle) { await api('/api/admin/users/' + encodeURIComponent(t.dataset.toggle), {method:'PUT', body: JSON.stringify({download_allowed: t.dataset.v !== '1'})}); refresh(); }
   if (t.dataset.edit) {
@@ -167,9 +202,9 @@ $('#openOnly').onchange = refresh; $('#evGo').onclick = refresh;
 $('#saveTok').onclick = () => { TOKEN = $('#token').value; try { sessionStorage.setItem('dlpToken', TOKEN); } catch (e) {} refresh(); };
 async function refresh() {
   if (!TOKEN) { $('#status').textContent = 'Nhập admin token'; return; }
-  try { await ({overview: loadOverview, alerts: loadAlerts, events: loadEvents, users: loadUsers})[tab](); } catch (e) {}
+  try { await ({overview: loadOverview, alerts: loadAlerts, events: loadEvents, users: loadUsers, watch: loadWatch})[tab](); } catch (e) {}
 }
-refresh(); setInterval(() => { if (tab !== 'users') refresh(); }, 10000);
+refresh(); setInterval(() => { if (tab !== 'users' && tab !== 'watch') refresh(); }, 10000);
 </script>
 </body>
 </html>

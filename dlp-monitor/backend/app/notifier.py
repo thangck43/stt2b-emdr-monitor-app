@@ -35,3 +35,31 @@ def notify(settings: Settings, severity: str, username: str, message: str) -> No
         ))
     for url, payload in targets:
         threading.Thread(target=_post, args=(url, payload), daemon=True).start()
+
+
+def _send_mail(settings: Settings, to: str, subject: str, body: str) -> None:
+    import smtplib
+    from email.message import EmailMessage
+
+    try:
+        msg = EmailMessage()
+        msg["From"] = settings.smtp_from or settings.smtp_user
+        msg["To"] = to
+        msg["Subject"] = subject
+        msg.set_content(body)
+        with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=10) as s:
+            if settings.smtp_starttls:
+                s.starttls()
+            if settings.smtp_user:
+                s.login(settings.smtp_user, settings.smtp_password)
+            s.send_message(msg)
+    except Exception as exc:
+        log.warning("Gửi email cảnh báo thất bại: %s", exc)
+
+
+def email_user(settings: Settings, to: str, subject: str, body: str) -> bool:
+    """Gửi email cảnh báo tới chính user (chạy nền). Trả về False nếu chưa cấu hình SMTP / không có địa chỉ."""
+    if not (settings.smtp_host and to and "@" in to):
+        return False
+    threading.Thread(target=_send_mail, args=(settings, to, subject, body), daemon=True).start()
+    return True

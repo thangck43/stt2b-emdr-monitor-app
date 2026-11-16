@@ -7,6 +7,41 @@
   const hasPasswordField = () => !!document.querySelector('input[type="password"]');
   let ctx = null; // null = chưa biết; {portal:false} = không phải portal
 
+  // ---- Cảnh báo cho user nằm trong danh sách theo dõi ----
+  // Hộp thoại phủ toàn trang, user phải bấm "Tôi đã hiểu" (ghi log xác nhận). Mỗi tab chỉ hiện 1 lần / phiên.
+  function showWarning(w, force) {
+    if (!w || document.getElementById("__dlp_warn")) return;
+    if (!force && sessionStorage.getItem("__dlp_warned")) return;
+    const host = document.createElement("div");
+    host.id = "__dlp_warn";
+    host.style.cssText = "position:fixed;inset:0;z-index:2147483647";
+    const root = host.attachShadow({ mode: "closed" }); // tách khỏi CSS của portal
+    root.innerHTML = `
+      <style>
+        .bg{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:16px;font:15px/1.5 system-ui,sans-serif}
+        .box{background:#fff;color:#1d2330;max-width:460px;width:100%;border-radius:10px;padding:22px;border-top:6px solid #dc2626;box-shadow:0 10px 40px rgba(0,0,0,.35)}
+        h2{margin:0 0 10px;font-size:19px;color:#b91c1c}
+        p{margin:0 0 18px;white-space:pre-wrap}
+        button{background:#dc2626;color:#fff;border:0;border-radius:6px;padding:9px 18px;font-size:15px;cursor:pointer}
+        @media (prefers-color-scheme:dark){.box{background:#1f2430;color:#e6e8ee}h2{color:#f87171}}
+      </style>
+      <div class="bg" role="alertdialog" aria-modal="true" aria-labelledby="t">
+        <div class="box"><h2 id="t"></h2><p id="m"></p><button id="ok">Tôi đã hiểu</button></div>
+      </div>`;
+    root.getElementById("t").textContent = "⚠️ " + (w.title || "Cảnh báo bảo mật");
+    root.getElementById("m").textContent = w.message || "";
+    root.getElementById("ok").addEventListener("click", () => {
+      sessionStorage.setItem("__dlp_warned", "1");
+      host.remove();
+      send({ type: "warning_ack", detail: "Xác nhận cảnh báo (event " + (w.event_id || "?") + ")" });
+    });
+    (document.body || document.documentElement).appendChild(host);
+    root.getElementById("ok").focus();
+  }
+  // Đăng nhập luôn hiện cảnh báo; truy cập trang chỉ hiện 1 lần / phiên tab
+  const sendAndWarn = (m) => chrome.runtime.sendMessage(m)
+    .then((r) => r && r.warning && showWarning(r.warning, m.type === "portalLogin")).catch(() => {});
+
   // ---- Bắt đăng nhập ----
   function findUsername(form) {
     const sel = ctx && ctx.usernameSelector;
@@ -59,7 +94,7 @@
     // Ghi nhận truy cập portal (1 lần / phiên tab)
     if (!sessionStorage.getItem("__dlp_visit")) {
       sessionStorage.setItem("__dlp_visit", "1");
-      send({ type: "visit" });
+      sendAndWarn({ type: "visit" });
     }
 
     // Kết quả lần submit login trước đó (sau khi trang chuyển)
@@ -70,7 +105,7 @@
         sessionStorage.removeItem(KEY);
         // Sau submit vẫn còn form mật khẩu => đăng nhập thất bại
         if (hasPasswordField()) send({ type: "login_failed", detail: "portal_username=" + pending });
-        else send({ type: "portalLogin", username: pending });
+        else sendAndWarn({ type: "portalLogin", username: pending });
       }, 1500);
     }
 
@@ -80,7 +115,7 @@
       const now = hasPasswordField();
       if (hadPwd && !now) {
         const u = sessionStorage.getItem(KEY);
-        if (u) { sessionStorage.removeItem(KEY); send({ type: "portalLogin", username: u }); }
+        if (u) { sessionStorage.removeItem(KEY); sendAndWarn({ type: "portalLogin", username: u }); }
       }
       hadPwd = now;
     }).observe(document.documentElement, { childList: true, subtree: true });

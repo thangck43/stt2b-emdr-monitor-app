@@ -52,10 +52,28 @@ dlp-monitor/
 - **Quyền tạm thời**: cấp quyền đến một thời điểm, tự hết hạn.
 - **Khóa truy cập**: user bị khóa vẫn đăng nhập portal => cảnh báo HIGH.
 
+## Danh sách theo dõi (watchlist)
+
+Tab **Danh sách theo dõi** trên dashboard: dán danh sách tên đăng nhập (mỗi dòng một tên, hỗ trợ wildcard `*@nhathau.com`, `tmp_*`), kèm lý do, mức cảnh báo và nội dung cảnh báo cho user.
+
+Khi user trong danh sách **đăng nhập** (hoặc mở) portal:
+
+1. **Ghi log** sự kiện `watchlist_hit`: thời điểm, IP, thiết bị, URL, pattern khớp, lý do.
+2. **Cảnh báo admin** (`watchlist_login`, mức theo cấu hình) trên dashboard + Slack/Teams/Telegram. Mỗi lần đăng nhập đều cảnh báo; chỉ mở trang thì gộp lại, tối đa 1 cảnh báo mỗi 30 phút (`DLP_WATCHLIST_DEDUPE_MINUTES`).
+3. **Hiện cảnh báo cho chính user**:
+   - Hộp thoại đỏ phủ toàn trang portal. User phải bấm **"Tôi đã hiểu"** mới dùng tiếp được, và việc bấm được ghi log `warning_ack`.
+   - Thông báo hệ thống của Windows/macOS.
+   - Email cho user nếu đã cấu hình SMTP. Email gửi tới địa chỉ `notify_email` của mục trong danh sách, hoặc tới username nếu username là email.
+
+So khớp được thực hiện trên cả định danh máy (employeeId / email Chrome) **và** tên gõ vào form đăng nhập portal. Vì vậy dùng tài khoản portal của người khác trên máy mình vẫn bị phát hiện. Với chế độ gateway, sự kiện vẫn được ghi log, admin vẫn được cảnh báo và email vẫn được gửi. Tuy nhiên không hiện được hộp thoại trên trình duyệt.
+
+API: `GET /api/admin/watchlist`, `PUT|DELETE /api/admin/watchlist/{pattern}`, `POST /api/admin/watchlist/bulk` (`{"usernames": "a\nb, c", "reason": "...", "warn_message": "...", "severity": "high", "replace": false}`).
+
 ## Cảnh báo tự động
 
 | Sự kiện | Mức |
 |---|---|
+| User trong danh sách theo dõi đăng nhập / truy cập portal | theo cấu hình (mặc định HIGH) |
 | Download bị chặn | MEDIUM |
 | ≥ 3 lần bị chặn trong 10 phút (cố tình tải) | HIGH |
 | User bị khóa nhưng vẫn đăng nhập portal | HIGH |
@@ -116,6 +134,9 @@ Xem `deploy/nginx-gateway.conf`. Nginx gọi `/api/gate` trước mỗi request;
 | `DLP_BURST_THRESHOLD` | `3` | Số lần bị chặn/10 phút để nâng HIGH |
 | `DLP_WORK_HOUR_START` / `_END` | `7` / `19` | Khung giờ làm việc |
 | `DLP_GATEWAY_DOWNLOAD_PATTERN` | xem code | Regex URL được coi là download |
+| `DLP_DEFAULT_WARNING` | (câu mặc định) | Nội dung cảnh báo cho user trong watchlist |
+| `DLP_WATCHLIST_DEDUPE_MINUTES` | `30` | Gộp cảnh báo admin khi user chỉ mở trang |
+| `DLP_SMTP_HOST`, `_PORT`, `_USER`, `_PASSWORD`, `_FROM`, `_STARTTLS` | – / 587 / … | SMTP gửi email cảnh báo cho user |
 
 ## API chính
 

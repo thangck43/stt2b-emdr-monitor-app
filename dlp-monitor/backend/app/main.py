@@ -2,6 +2,7 @@
 
 Chạy:  uvicorn app.main:app --host 0.0.0.0 --port 8080
 """
+import fnmatch
 import os
 import re
 import secrets
@@ -15,12 +16,12 @@ from pydantic import BaseModel, Field
 
 from .config import Settings, settings as default_settings
 from .db import Database, now_iso
-from .notifier import notify
+from .notifier import email_user, notify
 from .policy import evaluate_download
 
 STATIC_DIR = Path(__file__).parent / "static"
 
-EVENT_TYPES = {"login", "logout", "visit", "login_failed", "agent_tamper", "agent_heartbeat"}
+EVENT_TYPES = {"login", "logout", "visit", "login_failed", "agent_tamper", "agent_heartbeat", "warning_ack"}
 
 
 # ---------- Schemas ----------
@@ -36,6 +37,7 @@ class DownloadCheck(BaseModel):
 class AgentEvent(BaseModel):
     username: str = Field(min_length=1, max_length=200)
     type: str
+    portal_username: str = Field(default="", max_length=200)  # tên user gõ vào form login portal
     url: str = ""
     device: str = ""
     detail: str = ""
@@ -50,6 +52,23 @@ class UserPolicy(BaseModel):
     allow_until: str | None = None
     login_allowed: bool | None = None
     note: str | None = None
+
+
+class WatchEntry(BaseModel):
+    reason: str | None = None
+    warn_message: str | None = None
+    notify_email: str | None = None
+    severity: str | None = Field(default=None, pattern="^(low|medium|high)$")
+    enabled: bool | None = None
+
+
+class WatchBulk(BaseModel):
+    # Dán danh sách: mỗi dòng / dấu phẩy / dấu chấm phẩy là một username hoặc pattern
+    usernames: str
+    reason: str = ""
+    warn_message: str = ""
+    severity: str = Field(default="high", pattern="^(low|medium|high)$")
+    replace: bool = False  # true = xóa danh sách cũ trước khi nhập
 
 
 class AckBody(BaseModel):
@@ -132,6 +151,49 @@ def create_app(cfg: Settings | None = None) -> FastAPI:
             raise_alert(username, "low", "new_user", "Phát hiện user mới truy cập portal", eid)
         return {"allowed": decision.allowed, "reason": decision.reason, "event_id": eid}
 
+    # ---------- Watchlist ----------
+    def match_watchlist(*names: str) -> tuple[dict, str] | None:
+        """Trả về (entry, tên khớp) nếu một trong các tên nằm trong watchlist (hỗ trợ wildcard * ?)."""
+        cands = [norm_user(n) for n in names if n and n.strip()]
+        if not cands:
+            return None
+        for entry in db.query("SELECT * FROM watchlist WHERE enabled = 1"):
+            pat = entry["pattern"]
+            for n in cands:
+                if n == pat or fnmatch.fnmatchcase(n, pat):
+                    return entry, n
+        return None
+
+    def handle_watchlist(username: str, portal_username: str, url: str, ip: str, device: str,
+                         source: str, trigger: str) -> dict | None:
+        """Ghi log + cảnh báo admin + email user khi user trong watchlist đăng nhập/truy cập portal.
+        Trả về nội dung warning để agent hiển thị cho user."""
+        hit = match_watchlist(username, portal_username)
+        if not hit:
+            return None
+        entry, matched = hit
+        message = entry["warn_message"] or cfg.default_warning
+        eid = db.add_event(
+            username=username, type="watchlist_hit", url=url[:2000], ip=ip, device=device, source=source,
+            detail=f"trigger={trigger}; khớp '{entry['pattern']}' (tên: {matched}); lý do: {entry['reason']}"[:1000],
+        )
+        since = (datetime.now(timezone.utc) - timedelta(minutes=cfg.watchlist_alert_dedupe_minutes)).isoformat(timespec="seconds")
+        recent = db.one("SELECT id FROM alerts WHERE username = ? AND kind = 'watchlist_login' AND ts >= ?",
+                        (username, since))
+        if trigger == "login" or recent is None:
+            who = username + (f" (portal: {portal_username})" if portal_username and norm_user(portal_username) != username else "")
+            raise_alert(username, entry["severity"], "watchlist_login",
+                        f"User trong danh sách theo dõi {'đăng nhập' if trigger == 'login' else 'truy cập'} portal: "
+                        f"{who} từ IP {ip or '?'}" + (f" – lý do: {entry['reason']}" if entry["reason"] else ""), eid)
+            to = entry["notify_email"] or next((n for n in (username, portal_username) if "@" in (n or "")), "")
+            if email_user(cfg, to, "[Cảnh báo bảo mật] Phiên đăng nhập portal của bạn đang được giám sát",
+                          f"Xin chào {portal_username or username},\n\n{message}\n\n"
+                          f"Thời điểm: {now_iso()} (UTC)\nĐịa chỉ: {url}\nIP: {ip}\n\n"
+                          "Nếu không phải bạn đăng nhập, hãy báo ngay cho bộ phận IT."):
+                db.add_event(username=username, type="warning_email", detail=f"Đã gửi email cảnh báo tới {to}",
+                             source=source)
+        return {"title": "Cảnh báo bảo mật", "message": message, "event_id": eid}
+
     # ---------- Agent API (extension / gateway) ----------
     @app.post("/api/agent/check-download", dependencies=[Depends(require_agent)])
     def check_download(body: DownloadCheck, request: Request):
@@ -146,10 +208,18 @@ def create_app(cfg: Settings | None = None) -> FastAPI:
             raise HTTPException(400, f"type phải thuộc {sorted(EVENT_TYPES)}")
         username = norm_user(body.username)
         user, created = ensure_user(username)
+        ip = client_ip(request)
+        detail = body.detail[:1000]
+        if body.portal_username and f"portal_username={body.portal_username}" not in detail:
+            detail = (f"portal_username={body.portal_username[:200]} " + detail).strip()
         eid = db.add_event(
-            username=username, type=body.type, url=body.url[:2000], ip=client_ip(request),
-            device=body.device, source="extension", detail=body.detail[:1000],
+            username=username, type=body.type, url=body.url[:2000], ip=ip,
+            device=body.device, source="extension", detail=detail,
         )
+        warning = None
+        if body.type in ("login", "visit"):
+            warning = handle_watchlist(username, body.portal_username, body.url, ip, body.device,
+                                       "extension", body.type)
         if body.type == "login":
             if created:
                 raise_alert(username, "low", "new_user", "User mới đăng nhập portal lần đầu", eid)
@@ -169,7 +239,7 @@ def create_app(cfg: Settings | None = None) -> FastAPI:
         elif body.type == "agent_tamper":
             raise_alert(username, "high", "agent_tamper",
                         f"Phát hiện can thiệp vào agent giám sát: {body.detail}", eid)
-        return {"ok": True, "event_id": eid}
+        return {"ok": True, "event_id": eid, "warning": warning}
 
     @app.get("/api/agent/policy", dependencies=[Depends(require_agent)])
     def agent_policy(username: str):
@@ -198,6 +268,7 @@ def create_app(cfg: Settings | None = None) -> FastAPI:
         path = x_original_uri.split("?", 1)[0]
         if login_pattern.search(path) and x_original_method.upper() == "POST":
             db.add_event(username=username, type="login", url=x_original_uri, ip=ip, source="gateway")
+            handle_watchlist(username, "", x_original_uri, ip, "", "gateway", "login")
             return Response(status_code=204)
         if dl_pattern.search(x_original_uri):
             filename = path.rsplit("/", 1)[-1]
@@ -224,6 +295,53 @@ def create_app(cfg: Settings | None = None) -> FastAPI:
     @app.delete("/api/admin/users/{username}", dependencies=[Depends(require_admin)])
     def del_user(username: str):
         db.delete_user(norm_user(username))
+        return {"ok": True}
+
+    @app.get("/api/admin/watchlist", dependencies=[Depends(require_admin)])
+    def list_watch():
+        rows = db.query("SELECT * FROM watchlist ORDER BY pattern")
+        since = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat(timespec="seconds")
+        hits = db.query("SELECT detail, ts FROM events WHERE type='watchlist_hit' AND ts >= ? ORDER BY id", (since,))
+        for r in rows:
+            mine = [h for h in hits if f"khớp '{r['pattern']}'" in h["detail"]]
+            r["hits_30d"] = len(mine)
+            r["last_hit"] = mine[-1]["ts"] if mine else ""
+        return rows
+
+    def upsert_watch(pattern: str, fields: dict) -> None:
+        ts = now_iso()
+        with db.tx() as c:
+            c.execute("INSERT OR IGNORE INTO watchlist (pattern, created_at, updated_at) VALUES (?, ?, ?)",
+                      (pattern, ts, ts))
+            if fields:
+                cols = ", ".join(f"{k} = ?" for k in fields)
+                c.execute(f"UPDATE watchlist SET {cols}, updated_at = ? WHERE pattern = ?",
+                          (*fields.values(), ts, pattern))
+
+    @app.put("/api/admin/watchlist/{pattern}", dependencies=[Depends(require_admin)])
+    def put_watch(pattern: str, body: WatchEntry):
+        p = norm_user(pattern)
+        if not p:
+            raise HTTPException(400, "pattern rỗng")
+        upsert_watch(p, {k: (int(v) if isinstance(v, bool) else v)
+                         for k, v in body.model_dump().items() if v is not None})
+        return db.one("SELECT * FROM watchlist WHERE pattern = ?", (p,))
+
+    @app.post("/api/admin/watchlist/bulk", dependencies=[Depends(require_admin)])
+    def bulk_watch(body: WatchBulk):
+        names = sorted({norm_user(x) for x in re.split(r"[\s,;]+", body.usernames) if x.strip()})
+        if body.replace:
+            with db.tx() as c:
+                c.execute("DELETE FROM watchlist")
+        for n in names:
+            upsert_watch(n, {"reason": body.reason, "warn_message": body.warn_message,
+                             "severity": body.severity, "enabled": 1})
+        return {"ok": True, "count": len(names)}
+
+    @app.delete("/api/admin/watchlist/{pattern}", dependencies=[Depends(require_admin)])
+    def del_watch(pattern: str):
+        with db.tx() as c:
+            c.execute("DELETE FROM watchlist WHERE pattern = ?", (norm_user(pattern),))
         return {"ok": True}
 
     @app.get("/api/admin/events", dependencies=[Depends(require_admin)])
