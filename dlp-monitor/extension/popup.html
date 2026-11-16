@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><title>Portal DLP Agent</title>
+<style>
+:root{--bg:#fff;--fg:#1d2330;--muted:#6b7280;--ok:#15803d;--bad:#b91c1c}
+@media (prefers-color-scheme:dark){:root{--bg:#171b24;--fg:#e6e8ee;--muted:#9aa3b2;--ok:#4ade80;--bad:#f87171}}
+body{margin:0;padding:12px;width:280px;font:13px system-ui,sans-serif;background:var(--bg);color:var(--fg)}
+h1{font-size:15px;margin:0 0 8px}.row{margin:4px 0}.m{color:var(--muted)}.ok{color:var(--ok)}.bad{color:var(--bad)}
+</style></head>
+<body>
+<h1>🛡️ Portal DLP Agent</h1>
+<div class="row">Người dùng: <b id="user">…</b></div>
+<div class="row">Máy chủ: <span id="srv">…</span></div>
+<div class="row">Quyền download: <b id="dl">…</b></div>
+<div class="row m" id="mode"></div>
+<p class="m">Hoạt động truy cập portal và download được ghi nhận theo chính sách bảo mật của công ty.</p>
+<script src="popup.js"></script>
+</body></html>

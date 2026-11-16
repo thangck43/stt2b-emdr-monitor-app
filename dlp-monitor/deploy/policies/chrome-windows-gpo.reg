@@ -1,0 +1,37 @@
+Windows Registry Editor Version 5.00
+
+; ===== Google Chrome: ép cài DLP Agent + khóa các đường vòng =====
+; Thay EXTENSION_ID bằng ID thật sau khi đóng gói/đưa lên Chrome Web Store (private) hoặc self-host.
+; Thay UPDATE_URL bằng https://clients2.google.com/service/update2/crx (Web Store) hoặc URL update.xml nội bộ.
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Google\Chrome\ExtensionInstallForcelist]
+"1"="EXTENSION_ID;UPDATE_URL"
+
+; Cấu hình cho extension (chrome.storage.managed)
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Google\Chrome\3rdparty\extensions\EXTENSION_ID\policy]
+"serverUrl"="https://dlp.congty.local"
+"agentKey"="CHANGE_ME_AGENT_KEY"
+"failClosed"=dword:00000001
+"blockSaveAndPrint"=dword:00000001
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Google\Chrome\3rdparty\extensions\EXTENSION_ID\policy\portalDomains]
+"1"="portal.shelldep.com"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Google\Chrome]
+; Không cho mở Incognito (extension không chạy trong Incognito)
+"IncognitoModeAvailability"=dword:00000001
+; Tắt DevTools (tránh tắt/sửa extension, tải file qua DevTools)
+"DeveloperToolsAvailability"=dword:00000002
+; Bắt buộc đăng nhập Chrome bằng tài khoản công ty để extension lấy được email định danh
+"BrowserSignin"=dword:00000002
+"RestrictSigninToPattern"="*@congty.com"
+; Không cho tắt/gỡ extension, không cho cài extension lạ
+"BlockExternalExtensions"=dword:00000001
+; Không cho đổi thư mục tải về / luôn hỏi (tùy chọn)
+"PromptForDownloadLocation"=dword:00000000
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Google\Chrome\ExtensionInstallBlocklist]
+"1"="*"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Google\Chrome\ExtensionInstallAllowlist]
+"1"="EXTENSION_ID"

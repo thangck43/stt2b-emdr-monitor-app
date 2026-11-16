@@ -1,0 +1,7 @@
+{
+  "serverUrl":     { "Value": "https://dlp.congty.local" },
+  "agentKey":      { "Value": "CHANGE_ME_AGENT_KEY" },
+  "portalDomains": { "Value": ["portal.shelldep.com"] },
+  "failClosed":    { "Value": true },
+  "blockSaveAndPrint": { "Value": true }
+}

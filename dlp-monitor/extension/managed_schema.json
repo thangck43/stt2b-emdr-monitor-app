@@ -1,0 +1,12 @@
+{
+  "type": "object",
+  "properties": {
+    "serverUrl":     { "type": "string",  "description": "URL backend DLP, vd https://dlp.congty.local" },
+    "agentKey":      { "type": "string",  "description": "DLP_AGENT_KEY của backend" },
+    "portalDomains": { "type": "array",   "items": { "type": "string" }, "description": "Danh sách domain portal cần giám sát, vd [\"portal.shelldep.com\"]" },
+    "employeeId":    { "type": "string",  "description": "Định danh nhân viên (nếu IT đẩy theo từng máy/user). Bỏ trống => dùng email Chrome profile hoặc username đăng nhập portal" },
+    "failClosed":    { "type": "boolean", "description": "true = chặn download khi không liên lạc được server (khuyến nghị)" },
+    "blockSaveAndPrint": { "type": "boolean", "description": "Chặn Ctrl+S / Ctrl+P trên portal với user không có quyền download" },
+    "usernameSelector":  { "type": "string",  "description": "CSS selector ô username trên form login của portal (tùy chọn)" }
+  }
+}

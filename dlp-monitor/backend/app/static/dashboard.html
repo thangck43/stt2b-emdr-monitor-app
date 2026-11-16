@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DLP Portal Monitor</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--fg:#1d2330;--muted:#6b7280;--line:#e5e7eb;--accent:#2563eb;
+--ok:#15803d;--okbg:#dcfce7;--bad:#b91c1c;--badbg:#fee2e2;--warn:#a16207;--warnbg:#fef9c3}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1218;--card:#171b24;--fg:#e6e8ee;--muted:#9aa3b2;--line:#2a303c;
+--accent:#60a5fa;--ok:#4ade80;--okbg:#14301f;--bad:#f87171;--badbg:#3b1717;--warn:#facc15;--warnbg:#3a3112}}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--fg)}
+header{display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:12px 16px;border-bottom:1px solid var(--line);background:var(--card)}
+header h1{font-size:17px;margin:0 auto 0 0}
+nav{display:flex;gap:4px;flex-wrap:wrap;padding:8px 16px}
+nav button{border:1px solid var(--line);background:var(--card);color:var(--fg);padding:6px 12px;border-radius:6px;cursor:pointer}
+nav button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+main{padding:8px 16px 32px;max-width:1300px;margin:auto}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px}
+.kpi b{display:block;font-size:26px}.kpi span{color:var(--muted)}
+.wrap{overflow-x:auto}table{width:100%;border-collapse:collapse;background:var(--card)}
+th,td{padding:7px 8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top;font-size:13px}
+th{color:var(--muted);font-weight:600;white-space:nowrap}
+.pill{padding:1px 8px;border-radius:99px;font-size:12px;white-space:nowrap}
+.ok{background:var(--okbg);color:var(--ok)}.bad{background:var(--badbg);color:var(--bad)}.warn{background:var(--warnbg);color:var(--warn)}
+.muted{color:var(--muted)}input,select{background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:5px 7px}
+button.act{border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:6px;padding:4px 10px;cursor:pointer}
+button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0}
+.hidden{display:none}td.url{max-width:320px;word-break:break-all}
+</style>
+</head>
+<body>
+<header>
+  <h1>🛡️ DLP Portal Monitor</h1>
+  <input id="token" type="password" placeholder="Admin token" size="22">
+  <button class="act primary" id="saveTok">Kết nối</button>
+  <span id="status" class="muted"></span>
+</header>
+<nav>
+  <button data-tab="overview" class="on">Tổng quan</button>
+  <button data-tab="alerts">Cảnh báo</button>
+  <button data-tab="events">Nhật ký</button>
+  <button data-tab="users">User &amp; quyền download</button>
+</nav>
+<main>
+  <section id="overview">
+    <div class="grid" id="kpis"></div>
+    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">
+      <div class="card"><h3>User hoạt động 24h</h3><div class="wrap"><table id="active"></table></div></div>
+      <div class="card"><h3>Bị chặn nhiều nhất 24h</h3><div class="wrap"><table id="topblocked"></table></div></div>
+    </div>
+  </section>
+  <section id="alerts" class="hidden">
+    <div class="row"><label><input type="checkbox" id="openOnly" checked> Chỉ cảnh báo chưa xử lý</label></div>
+    <div class="wrap"><table id="alertTbl"></table></div>
+  </section>
+  <section id="events" class="hidden">
+    <div class="row">
+      <input id="evUser" placeholder="Lọc username">
+      <select id="evType"><option value="">Tất cả loại</option><option>login</option><option>login_failed</option>
+        <option>logout</option><option>visit</option><option>download_allowed</option><option>download_blocked</option><option>agent_tamper</option></select>
+      <button class="act" id="evGo">Lọc</button>
+    </div>
+    <div class="wrap"><table id="evTbl"></table></div>
+  </section>
+  <section id="users" class="hidden">
+    <div class="card">
+      <b>Thêm / sửa quyền user</b>
+      <div class="row">
+        <input id="uName" placeholder="username (vd: nguyen.van.a)">
+        <input id="uDisp" placeholder="Tên hiển thị">
+        <input id="uDept" placeholder="Phòng ban">
+        <label><input type="checkbox" id="uDl"> Cho phép download</label>
+        <label><input type="checkbox" id="uLogin" checked> Cho phép truy cập</label>
+      </div>
+      <div class="row">
+        <input id="uExt" placeholder="Đuôi file cho phép: pdf,xlsx (trống = tất cả)" size="34">
+        <input id="uMax" type="number" min="0" step="1" placeholder="Max MB (0 = không giới hạn)">
+        <label>Hết hạn quyền: <input id="uUntil" type="datetime-local"></label>
+        <button class="act primary" id="uSave">Lưu</button>
+      </div>
+    </div>
+    <div class="wrap" style="margin-top:12px"><table id="userTbl"></table></div>
+  </section>
+</main>
+<script>
+const $ = s => document.querySelector(s);
+let TOKEN = ''; try { TOKEN = sessionStorage.getItem('dlpToken') || ''; } catch (e) {}
+$('#token').value = TOKEN;
+const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt = ts => ts ? new Date(ts).toLocaleString('vi-VN') : '';
+async function api(path, opts = {}) {
+  const r = await fetch(path, {...opts, headers: {'Content-Type':'application/json', Authorization:'Bearer ' + TOKEN, ...(opts.headers||{})}});
+  if (!r.ok) { $('#status').textContent = 'Lỗi ' + r.status + (r.status === 401 ? ' – sai token' : ''); throw new Error(r.status); }
+  $('#status').textContent = 'Cập nhật ' + new Date().toLocaleTimeString('vi-VN');
+  return r.json();
+}
+const typePill = t => {
+  const cls = {download_blocked:'bad', agent_tamper:'bad', login_failed:'warn', download_allowed:'ok', login:'ok'}[t] || '';
+  return `<span class="pill ${cls}">${esc(t)}</span>`;
+};
+const sevPill = s => `<span class="pill ${{high:'bad',medium:'warn',low:'ok'}[s]||''}">${esc(s)}</span>`;
+function table(el, head, rows) {
+  el.innerHTML = '<tr>' + head.map(h => `<th>${h}</th>`).join('') + '</tr>' +
+    (rows.length ? rows.join('') : `<tr><td colspan="${head.length}" class="muted">Không có dữ liệu</td></tr>`);
+}
+let tab = 'overview';
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x === b));
+  document.querySelectorAll('main section').forEach(s => s.classList.toggle('hidden', s.id !== b.dataset.tab));
+  tab = b.dataset.tab; refresh();
+});
+async function loadOverview() {
+  const s = await api('/api/admin/stats'); const c = s.last_24h;
+  const k = [['Cảnh báo mở', s.open_alerts], ['Đăng nhập 24h', c.login||0], ['Download cho phép', c.download_allowed||0],
+             ['Download bị chặn', c.download_blocked||0], ['User hoạt động', s.active_users.length]];
+  $('#kpis').innerHTML = k.map(([l,v]) => `<div class="card kpi"><b>${v}</b><span>${l}</span></div>`).join('');
+  table($('#active'), ['User','Lần cuối'], s.active_users.map(u => `<tr><td>${esc(u.username)}</td><td>${fmt(u.last_seen)}</td></tr>`));
+  table($('#topblocked'), ['User','Số lần chặn'], s.top_blocked.map(u => `<tr><td>${esc(u.username)}</td><td>${u.n}</td></tr>`));
+}
+async function loadAlerts() {
+  const a = await api('/api/admin/alerts?only_open=' + $('#openOnly').checked);
+  table($('#alertTbl'), ['Thời gian','Mức','User','Loại','Nội dung',''], a.map(x => `<tr><td>${fmt(x.ts)}</td><td>${sevPill(x.severity)}</td>
+    <td>${esc(x.username)}</td><td>${esc(x.kind)}</td><td>${esc(x.message)}</td>
+    <td>${x.acknowledged ? `<span class="muted">Đã xử lý (${esc(x.ack_by)})</span>` : `<button class="act" data-ack="${x.id}">Xác nhận</button>`}</td></tr>`));
+}
+async function loadEvents() {
+  const q = new URLSearchParams({username: $('#evUser').value, type: $('#evType').value, limit: 500});
+  const e = await api('/api/admin/events?' + q);
+  table($('#evTbl'), ['Thời gian','User','Loại','URL / File','IP','Nguồn','Chi tiết'], e.map(x => `<tr><td>${fmt(x.ts)}</td>
+    <td>${esc(x.username)}</td><td>${typePill(x.type)}</td><td class="url">${esc(x.filename || x.url)}</td>
+    <td>${esc(x.ip)}</td><td>${esc(x.source)}</td><td>${esc(x.detail)}</td></tr>`));
+}
+async function loadUsers() {
+  const u = await api('/api/admin/users');
+  table($('#userTbl'), ['User','Tên','Phòng ban','Truy cập','Download','Đuôi file','Max MB','Hết hạn','Ghi chú',''], u.map(x => `<tr>
+    <td>${esc(x.username)}</td><td>${esc(x.display_name)}</td><td>${esc(x.department)}</td>
+    <td>${x.login_allowed ? '<span class="pill ok">Cho phép</span>' : '<span class="pill bad">Khóa</span>'}</td>
+    <td><button class="act" data-toggle="${esc(x.username)}" data-v="${x.download_allowed}">${x.download_allowed ? '✅ Cho phép' : '⛔ Cấm'}</button></td>
+    <td>${esc(x.allowed_extensions) || '<span class="muted">tất cả</span>'}</td><td>${x.max_size_mb || '–'}</td>
+    <td>${fmt(x.allow_until) || '–'}</td><td class="muted">${esc(x.note)}</td>
+    <td><button class="act" data-edit='${esc(JSON.stringify(x))}'>Sửa</button></td></tr>`));
+}
+document.addEventListener('click', async ev => {
+  const t = ev.target;
+  if (t.dataset.ack) { await api(`/api/admin/alerts/${t.dataset.ack}/ack`, {method:'POST', body: JSON.stringify({by:'admin'})}); refresh(); }
+  if (t.dataset.toggle) { await api('/api/admin/users/' + encodeURIComponent(t.dataset.toggle), {method:'PUT', body: JSON.stringify({download_allowed: t.dataset.v !== '1'})}); refresh(); }
+  if (t.dataset.edit) {
+    const x = JSON.parse(t.dataset.edit);
+    $('#uName').value = x.username; $('#uDisp').value = x.display_name; $('#uDept').value = x.department;
+    $('#uDl').checked = !!x.download_allowed; $('#uLogin').checked = !!x.login_allowed; $('#uExt').value = x.allowed_extensions;
+    $('#uMax').value = x.max_size_mb || ''; const d = x.allow_until ? new Date(x.allow_until) : null;
+    $('#uUntil').value = d && !isNaN(d) ? new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0,16) : '';
+  }
+});
+$('#uSave').onclick = async () => {
+  const name = $('#uName').value.trim(); if (!name) return;
+  const until = $('#uUntil').value ? new Date($('#uUntil').value).toISOString() : '';
+  await api('/api/admin/users/' + encodeURIComponent(name), {method:'PUT', body: JSON.stringify({
+    display_name: $('#uDisp').value, department: $('#uDept').value, download_allowed: $('#uDl').checked,
+    login_allowed: $('#uLogin').checked, allowed_extensions: $('#uExt').value, max_size_mb: Number($('#uMax').value || 0), allow_until: until})});
+  refresh();
+};
+$('#openOnly').onchange = refresh; $('#evGo').onclick = refresh;
+$('#saveTok').onclick = () => { TOKEN = $('#token').value; try { sessionStorage.setItem('dlpToken', TOKEN); } catch (e) {} refresh(); };
+async function refresh() {
+  if (!TOKEN) { $('#status').textContent = 'Nhập admin token'; return; }
+  try { await ({overview: loadOverview, alerts: loadAlerts, events: loadEvents, users: loadUsers})[tab](); } catch (e) {}
+}
+refresh(); setInterval(() => { if (tab !== 'users') refresh(); }, 10000);
+</script>
+</body>
+</html>

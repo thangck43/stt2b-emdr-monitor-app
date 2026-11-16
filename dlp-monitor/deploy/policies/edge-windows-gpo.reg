@@ -1,0 +1,25 @@
+Windows Registry Editor Version 5.00
+
+; ===== Microsoft Edge: tương đương cấu hình Chrome =====
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Edge\ExtensionInstallForcelist]
+"1"="EXTENSION_ID;UPDATE_URL"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Edge\3rdparty\extensions\EXTENSION_ID\policy]
+"serverUrl"="https://dlp.congty.local"
+"agentKey"="CHANGE_ME_AGENT_KEY"
+"failClosed"=dword:00000001
+"blockSaveAndPrint"=dword:00000001
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Edge\3rdparty\extensions\EXTENSION_ID\policy\portalDomains]
+"1"="portal.shelldep.com"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Edge]
+"InPrivateModeAvailability"=dword:00000001
+"DeveloperToolsAvailability"=dword:00000002
+"BlockExternalExtensions"=dword:00000001
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Edge\ExtensionInstallBlocklist]
+"1"="*"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Edge\ExtensionInstallAllowlist]
+"1"="EXTENSION_ID"

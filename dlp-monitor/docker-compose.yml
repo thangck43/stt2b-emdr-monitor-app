@@ -1,0 +1,21 @@
+services:
+  dlp-backend:
+    build: ./backend
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - dlp-data:/data
+    environment:
+      DLP_AGENT_KEY: ${DLP_AGENT_KEY:?Đặt DLP_AGENT_KEY trong file .env}
+      DLP_ADMIN_TOKEN: ${DLP_ADMIN_TOKEN:?Đặt DLP_ADMIN_TOKEN trong file .env}
+      DLP_DEFAULT_DOWNLOAD_ALLOWED: "false"
+      DLP_ALERT_WEBHOOK_URL: ${DLP_ALERT_WEBHOOK_URL:-}
+      DLP_TELEGRAM_BOT_TOKEN: ${DLP_TELEGRAM_BOT_TOKEN:-}
+      DLP_TELEGRAM_CHAT_ID: ${DLP_TELEGRAM_CHAT_ID:-}
+      DLP_WORK_HOUR_START: "7"
+      DLP_WORK_HOUR_END: "19"
+      TZ: Asia/Ho_Chi_Minh
+
+volumes:
+  dlp-data:

@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><title>Cấu hình DLP Agent</title>
+<style>
+:root{--bg:#fff;--fg:#1d2330;--muted:#6b7280;--line:#d1d5db}
+@media (prefers-color-scheme:dark){:root{--bg:#171b24;--fg:#e6e8ee;--muted:#9aa3b2;--line:#374151}}
+body{font:14px system-ui,sans-serif;background:var(--bg);color:var(--fg);max-width:560px;margin:24px auto;padding:0 16px}
+label{display:block;margin:10px 0 4px}input[type=text],input[type=password]{width:100%;box-sizing:border-box;padding:6px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg)}
+.m{color:var(--muted)}button{margin-top:14px;padding:6px 16px}
+</style></head>
+<body>
+<h2>Cấu hình DLP Agent (chế độ thử nghiệm)</h2>
+<p class="m" id="managedNote">Khi triển khai thật, IT đẩy cấu hình qua Chrome/Edge policy – các giá trị đó sẽ ghi đè trang này.</p>
+<label>Server URL</label><input type="text" id="serverUrl" placeholder="https://dlp.congty.local">
+<label>Agent key</label><input type="password" id="agentKey">
+<label>Domain portal (phân cách bằng dấu phẩy)</label><input type="text" id="portalDomains" placeholder="portal.shelldep.com">
+<label>Employee ID (tùy chọn)</label><input type="text" id="employeeId">
+<label>CSS selector ô username (tùy chọn)</label><input type="text" id="usernameSelector" placeholder="#username">
+<label><input type="checkbox" id="failClosed" checked> Chặn download khi mất kết nối server</label>
+<label><input type="checkbox" id="blockSaveAndPrint" checked> Chặn Ctrl+S / Ctrl+P trên portal khi không có quyền</label>
+<button id="save">Lưu</button> <span id="msg" class="m"></span>
+<script src="options.js"></script>
+</body></html>
