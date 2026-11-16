@@ -1,4 +1,4 @@
-const ids = ["serverUrl", "agentKey", "portalDomains", "employeeId", "usernameSelector", "failClosed", "blockSaveAndPrint"];
+const ids = ["serverUrl", "agentKey", "portalDomains", "loginDomains", "fileDomains", "employeeId", "usernameSelector", "failClosed", "blockSaveAndPrint"];
 (async () => {
   const c = await chrome.storage.local.get(ids);
   for (const id of ids) {
@@ -19,7 +19,7 @@ document.getElementById("save").onclick = async () => {
     const el = document.getElementById(id);
     v[id] = el.type === "checkbox" ? el.checked : el.value.trim();
   }
-  v.portalDomains = v.portalDomains.split(",").map((s) => s.trim()).filter(Boolean);
+  for (const k of ["portalDomains", "loginDomains", "fileDomains"]) v[k] = v[k].split(",").map((s) => s.trim()).filter(Boolean);
   await chrome.storage.local.set(v);
   document.getElementById("msg").textContent = "Đã lưu";
 };

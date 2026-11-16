@@ -17,6 +17,14 @@ Windows Registry Editor Version 5.00
 [HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Google\Chrome\3rdparty\extensions\EXTENSION_ID\policy\portalDomains]
 "1"="portal.shelldep.com"
 
+; Trang đăng nhập SSO mà portal chuyển sang (xem trên thanh địa chỉ khi đăng nhập portal)
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Google\Chrome\3rdparty\extensions\EXTENSION_ID\policy\loginDomains]
+"1"="login.microsoftonline.com"
+
+; Domain CDN/storage chứa file của portal (xem URL file khi tải: Ctrl+J)
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Google\Chrome\3rdparty\extensions\EXTENSION_ID\policy\fileDomains]
+"1"="FILE_DOMAIN_CUA_PORTAL"
+
 [HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Google\Chrome]
 ; Không cho mở Incognito (extension không chạy trong Incognito)
 "IncognitoModeAvailability"=dword:00000001

@@ -26,6 +26,38 @@ Hệ thống giám sát nhân viên đăng nhập vào portal (vd: Shell DEP) v�
 
 Có thể dùng **cả hai** cùng lúc; mọi sự kiện đều đổ về chung một dashboard.
 
+## Portal bên thứ ba (vd Shell DEP)
+
+Công ty không kiểm soát được server của portal, nên **dùng chế độ A (extension)**. Chế độ B (gateway) không áp dụng được.
+
+**Bước 1 – Xác định 3 loại domain** (mở portal trên một máy thử, quan sát thanh địa chỉ và `Ctrl+J`):
+
+| Tham số | Lấy ở đâu | Ví dụ |
+|---|---|---|
+| `portalDomains` | Domain của portal sau khi đăng nhập | `portal.vidu-shell.com` |
+| `loginDomains` | Domain của trang đăng nhập SSO mà portal chuyển sang (nếu có) | `login.microsoftonline.com`, `xxx.okta.com` |
+| `fileDomains` | Domain trong link file khi tải (`Ctrl+J` → chuột phải → Copy link) nếu khác domain portal | `xxx.blob.core.windows.net`, `xxx.cloudfront.net` |
+
+**Cách extension xử lý trang SSO dùng chung:** trang như `login.microsoftonline.com` cũng là nơi nhân viên đăng nhập Office 365 hay các dịch vụ khác. Vì vậy extension chỉ giám sát trang SSO khi tab đó **vừa đi từ portal sang** (trong vòng 15 phút), hoặc khi URL có `redirect_uri` trỏ về portal. Đăng nhập vào dịch vụ khác qua cùng trang SSO sẽ không bị ghi nhận.
+
+**Luồng đăng nhập được hỗ trợ:**
+- form đăng nhập ngay trên portal;
+- portal chuyển sang SSO ở domain khác rồi quay về;
+- đăng nhập 2 bước (nhập email trước, sang bước sau mới nhập mật khẩu);
+- có MFA hoặc màn "Stay signed in?" ở giữa.
+
+Đăng nhập chỉ được tính là thành công khi tab **quay về portal**. Còn ô mật khẩu sau khi bấm đăng nhập thì ghi `login_failed`.
+
+**Download:** file bị kiểm soát nếu URL/referrer thuộc `portalDomains` hoặc `fileDomains`. Với file tạo bằng JavaScript (`blob:`/`data:`) hoặc link không gửi referrer, extension dựa vào tab đang mở: nếu tab đang ở portal thì vẫn kiểm soát.
+
+**Nên làm thêm với nhà cung cấp portal** (thường là kiểm soát mạnh hơn extension):
+- **SSO bằng tài khoản công ty** (Entra ID / Okta của công ty), nếu portal hỗ trợ:
+  - Log đăng nhập portal có sẵn trong IdP của công ty.
+  - Có thể bật Conditional Access, chỉ cho đăng nhập từ máy công ty đang được quản lý. Khi đó dùng máy cá nhân sẽ không vào được portal, nên extension không thể bị né.
+  - Nhân viên nghỉ việc chỉ cần khóa tài khoản công ty là mất quyền portal.
+- **Giới hạn IP**: chỉ cho truy cập portal từ IP công ty / VPN.
+- **Phân quyền download ngay trên portal** (nếu portal có role "view only"), và yêu cầu bên cung cấp xuất **audit log** download để đối chiếu.
+
 ## Thành phần
 
 ```
@@ -113,6 +145,8 @@ python -m pytest -q      # chạy test
 1. Đóng gói extension, đưa lên Chrome Web Store ở chế độ *Private* (chỉ domain công ty) hoặc self-host file `.crx` + `update.xml`. Ghi lại `EXTENSION_ID`.
 2. Đẩy policy bằng GPO: `deploy/policies/chrome-windows-gpo.reg`, `edge-windows-gpo.reg` (thay `EXTENSION_ID`, `UPDATE_URL`, domain, agent key). Với Intune / Google Admin Console dùng `chrome-managed-config.json`.
 3. Policy kèm theo sẽ: ép cài + không cho gỡ extension, tắt Incognito/InPrivate, tắt DevTools, chặn extension lạ, bắt đăng nhập trình duyệt bằng tài khoản công ty.
+
+Các tham số cấu hình extension: `serverUrl`, `agentKey`, `portalDomains`, `loginDomains`, `fileDomains`, `employeeId`, `failClosed`, `blockSaveAndPrint`, `usernameSelector`. Xem `extension/managed_schema.json`.
 
 **Định danh user** (theo thứ tự ưu tiên): `employeeId` do IT đẩy → email tài khoản Chrome/Edge công ty → username nhập vào form login portal. Khuyến nghị dùng 1 trong 2 cách đầu; cách thứ 3 chỉ là dự phòng vì user có thể gõ tên người khác.
 

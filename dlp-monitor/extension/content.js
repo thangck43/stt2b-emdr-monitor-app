@@ -1,7 +1,6 @@
 // Chạy trên mọi trang nhưng chỉ gửi dữ liệu khi background xác nhận đây là portal được giám sát.
 // Listener được gắn ngay (đồng bộ) để không bỏ lỡ lần đăng nhập nếu user submit rất nhanh.
 (() => {
-  const KEY = "__dlp_pending_login";
   const ctxPromise = chrome.runtime.sendMessage({ type: "getPortalContext" }).catch(() => null);
   const send = (m) => chrome.runtime.sendMessage(m).catch(() => {});
   const hasPasswordField = () => !!document.querySelector('input[type="password"]');
@@ -43,33 +42,45 @@
     .then((r) => r && r.warning && showWarning(r.warning, m.type === "portalLogin")).catch(() => {});
 
   // ---- Bắt đăng nhập ----
+  // Hỗ trợ: form trên chính portal, trang SSO ở domain khác (portal bên thứ ba), và đăng nhập 2 bước
+  // (nhập email trước, sang bước sau mới nhập mật khẩu). Chỉ lưu username, KHÔNG BAO GIỜ đọc mật khẩu.
+  // Lần đăng nhập đang chờ được background lưu theo tab, vì sessionStorage không theo được khi đổi domain.
+  const USER_SEL = 'input[type="email"], input[name*="user" i], input[id*="user" i], input[name*="login" i], ' +
+    'input[name*="email" i], input[autocomplete="username"], input[name="loginfmt"]';
+  let typedUser = "";        // username gõ ở bước trước (SPA 2 bước)
+  let attemptedUser = "";    // lần submit mật khẩu trên trang hiện tại
   function findUsername(form) {
     const sel = ctx && ctx.usernameSelector;
-    const el = (sel && document.querySelector(sel)) ||
-      form.querySelector('input[type="email"]') ||
-      form.querySelector('input[name*="user" i], input[id*="user" i], input[name*="login" i], input[name*="email" i], input[autocomplete="username"]') ||
-      form.querySelector('input[type="text"]');
-    return el && el.value ? el.value.trim() : "";
+    const el = (sel && document.querySelector(sel)) || form.querySelector(USER_SEL) || form.querySelector('input[type="text"]');
+    return el && el.value ? el.value.trim().slice(0, 200) : "";
   }
-  function onLoginAttempt(form) {
+  function onSubmitLike(form) {
     if (ctx && !ctx.portal) return;
-    if (!form || !form.querySelector('input[type="password"]')) return;
-    const u = findUsername(form);
-    if (u) sessionStorage.setItem(KEY, u.slice(0, 200)); // chỉ lưu username, không bao giờ lưu mật khẩu
+    if (!form) return;
+    if (form.querySelector('input[type="password"]')) {
+      attemptedUser = findUsername(form) || typedUser;
+      send({ type: "loginAttempt", username: attemptedUser, stage: "password" });
+    } else {
+      const u = findUsername(form);
+      if (u && form.querySelector(USER_SEL)) {   // bước 1: chỉ nhập username / email
+        typedUser = u;
+        send({ type: "loginAttempt", username: u, stage: "user" });
+      }
+    }
   }
-  document.addEventListener("submit", (e) => onLoginAttempt(e.target), true);
+  document.addEventListener("submit", (e) => onSubmitLike(e.target), true);
   // Nhiều SPA đăng nhập bằng nút bấm / Enter mà không submit form
   document.addEventListener("click", (e) => {
-    const b = e.target.closest && e.target.closest('button, input[type="submit"]');
-    if (b) onLoginAttempt(b.form || b.closest("form") || document);
+    const b = e.target.closest && e.target.closest('button, input[type="submit"], [role="button"]');
+    if (b) onSubmitLike(b.form || b.closest("form") || document);
   }, true);
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && e.target && e.target.type === "password") onLoginAttempt(e.target.form || document);
+    if (e.key === "Enter" && e.target && e.target.tagName === "INPUT") onSubmitLike(e.target.form || document);
   }, true);
 
   // ---- Logout ----
   document.addEventListener("click", (e) => {
-    if (!ctx || !ctx.portal) return;
+    if (!ctx || !ctx.portal || ctx.loginOnly) return;
     const a = e.target.closest && e.target.closest("a, button");
     if (a && /log\s?out|sign\s?out|đăng xuất/i.test((a.textContent || "") + (a.getAttribute("href") || ""))) {
       send({ type: "logout" });
@@ -87,35 +98,41 @@
     }
   }, true);
 
-  ctxPromise.then((c) => {
+  ctxPromise.then(async (c) => {
     ctx = c || { portal: false };
-    if (!ctx.portal) { sessionStorage.removeItem(KEY); return; }
+    if (!ctx.portal) return;
+    const onPortal = !ctx.loginOnly;   // loginOnly = trang SSO trong luồng đăng nhập portal
 
     // Ghi nhận truy cập portal (1 lần / phiên tab)
-    if (!sessionStorage.getItem("__dlp_visit")) {
+    if (onPortal && !sessionStorage.getItem("__dlp_visit")) {
       sessionStorage.setItem("__dlp_visit", "1");
       sendAndWarn({ type: "visit" });
     }
 
-    // Kết quả lần submit login trước đó (sau khi trang chuyển)
-    const pending = sessionStorage.getItem(KEY);
-    if (pending) {
+    // Kết quả lần submit mật khẩu trước đó (sau khi trang chuyển, kể cả chuyển từ trang SSO về portal)
+    const r = await chrome.runtime.sendMessage({ type: "peekPendingLogin" }).catch(() => null);
+    const p = r && r.pending;
+    if (p && p.stage === "password") {
       setTimeout(() => {
-        if (sessionStorage.getItem(KEY) !== pending) return;
-        sessionStorage.removeItem(KEY);
-        // Sau submit vẫn còn form mật khẩu => đăng nhập thất bại
-        if (hasPasswordField()) send({ type: "login_failed", detail: "portal_username=" + pending });
-        else sendAndWarn({ type: "portalLogin", username: pending });
+        // Sau submit vẫn còn ô mật khẩu => đăng nhập thất bại
+        if (hasPasswordField()) {
+          typedUser = p.username;
+          send({ type: "login_failed", detail: "portal_username=" + p.username });
+        }
+        // Về tới portal => đăng nhập thành công. Còn ở trang SSO (MFA, "Stay signed in?") => chờ tiếp
+        else if (onPortal && p.username) sendAndWarn({ type: "portalLogin", username: p.username });
       }, 1500);
+    } else if (p && p.stage === "user") {
+      typedUser = p.username;
     }
 
-    // SPA: đăng nhập thành công mà không reload -> form mật khẩu biến mất
+    // SPA: đăng nhập trên chính portal mà không reload -> ô mật khẩu biến mất
     let hadPwd = hasPasswordField();
     new MutationObserver(() => {
       const now = hasPasswordField();
-      if (hadPwd && !now) {
-        const u = sessionStorage.getItem(KEY);
-        if (u) { sessionStorage.removeItem(KEY); sendAndWarn({ type: "portalLogin", username: u }); }
+      if (hadPwd && !now && onPortal && attemptedUser) {
+        const u = attemptedUser; attemptedUser = "";
+        sendAndWarn({ type: "portalLogin", username: u });
       }
       hadPwd = now;
     }).observe(document.documentElement, { childList: true, subtree: true });
